@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Overlay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    font-family: 'Segoe UI', sans-serif;
+    color: white;
+    width: 380px;
+    padding: 10px;
+    user-select: none;
+  }
+
+  .card {
+    background: rgba(0,0,0,0.72);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.07);
+    padding: 9px 13px;
+    margin-bottom: 7px;
+  }
+
+  /* ── INACTIVITY ── */
+  #inactivity-card { border-color: rgba(251,191,36,0.2); }
+  #inactivity-card.danger { border-color: rgba(239,68,68,0.35); }
+  #inactivity-card.waiting { border-color: rgba(99,102,241,0.4); background: rgba(99,102,241,0.06); }
+  .inact-row { display: flex; align-items: center; gap: 7px; }
+  .inact-icon { font-size: 12px; }
+  .inact-label { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: #fbbf24; font-weight: 700; flex: 1; }
+  #inactivity-card.danger  .inact-label { color: #f87171; }
+  #inactivity-card.waiting .inact-label { color: #818cf8; }
+  .inact-time { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: #fbbf24; }
+  #inactivity-card.danger  .inact-time { color: #f87171; }
+  #inactivity-card.waiting .inact-time { color: #818cf8; }
+  .inact-bar-bg { height: 3px; border-radius: 3px; background: rgba(251,191,36,0.12); overflow: hidden; margin-top: 6px; }
+  #inact-fill { height: 100%; background: #fbbf24; border-radius: 3px; transition: width 5s linear; }
+  #inactivity-card.danger  #inact-fill { background: #ef4444; animation: pulse 1s ease-in-out infinite; }
+  #inactivity-card.waiting #inact-fill { background: #6366f1; width: 100% !important; animation: waitpulse 2s ease-in-out infinite; }
+  @keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:.3} }
+  @keyframes waitpulse{ 0%,100%{opacity:.4} 50%{opacity:1} }
+
+  /* ── VOTE ── */
+  #vote-card { display: none; border-color: rgba(251,191,36,0.28); }
+  #vote-card.show { display: block; }
+  .vote-top { display: flex; align-items: center; gap: 7px; }
+  .vote-emoji { font-size: 13px; }
+  .vote-label { font-size: 11px; color: #fde68a; flex: 1; }
+  .vote-label strong { color: #fff; font-family: monospace; font-size: 13px; }
+  #vote-timer {
+    font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: #fbbf24; min-width: 26px; text-align: right;
+  }
+  #vote-timer.urgent { color: #f87171; animation: pulse .7s ease-in-out infinite; }
+  .vote-bottom { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+  .vote-pips { display: flex; gap: 5px; flex: 1; }
+  .pip { height: 5px; border-radius: 3px; flex: 1; background: rgba(255,255,255,0.12); transition: background .25s; }
+  .pip.on { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+  .vote-bar-bg { height: 2px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; margin-top: 5px; }
+  #vote-bar-fill { height: 100%; background: #fbbf24; border-radius: 2px; transition: width 1s linear; }
+
+  /* ── SOLO BANNER ── */
+  #solo-banner {
+    display: none;
+    background: rgba(139,92,246,0.18);
+    border: 1px solid rgba(139,92,246,0.35);
+    border-radius: 10px;
+    padding: 7px 13px;
+    margin-bottom: 7px;
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: #c084fc; text-align: center;
+  }
+  #solo-banner.show { display: block; animation: fadeIn .25s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+
+  /* ── SECTION TITLE ── */
+  .section-title { font-size: 9px; letter-spacing: 1.8px; text-transform: uppercase; opacity: .3; margin-bottom: 6px; }
+
+  /* ── EVENTS ── */
+  .event-row { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+  .event-row + .event-row { border-top: 1px solid rgba(255,255,255,0.05); margin-top: 3px; padding-top: 5px; }
+  .ev-user { font-size: 11px; font-weight: 700; color: #60a5fa; flex-shrink: 0; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev-user.solo-u  { color: #c084fc; }
+  .ev-user.bot-u   { color: #f87171; }
+  .ev-user.admin-u { color: #f97316; }
+  .ev-cmd { font-size: 12px; font-family: monospace; color: #a3e635; }
+  .ev-cmd.unknown { color: #f87171; font-weight: 700; font-family: monospace; background: rgba(239,68,68,0.12); padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(239,68,68,0.25); }
+  .ev-cmd.system  { color: #f87171; opacity: .8; font-style: italic; font-family: inherit; font-size: 11px; }
+  .ev-cmd.vote-ev { color: #fde68a; font-family: inherit; font-size: 11px; }
+  .ev-cmd.expired { color: #6b7280; font-style: italic; font-family: inherit; font-size: 11px; }
+
+  /* ── CHAT ── */
+  .chat-row { display: flex; align-items: baseline; gap: 7px; padding: 3px 0; }
+  .chat-row + .chat-row { border-top: 1px solid rgba(255,255,255,0.05); margin-top: 3px; padding-top: 5px; }
+  .chat-author { font-size: 11px; font-weight: 700; color: #60a5fa; flex-shrink: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-msg { font-size: 11px; opacity: .7; line-height: 1.4; word-break: break-word; }
+</style>
+</head>
+<body>
+
+<!-- INACTIVITY TIMER -->
+<div class="card" id="inactivity-card">
+  <div class="inact-row">
+    <span class="inact-icon" id="inact-icon">💤</span>
+    <span class="inact-label" id="inact-label">AUTO-REVERT DANS</span>
+    <span class="inact-time" id="inact-time">15:00</span>
+  </div>
+  <div class="inact-bar-bg"><div id="inact-fill" style="width:100%"></div></div>
+</div>
+
+<!-- SOLO BANNER -->
+<div id="solo-banner">⚡ SOLO — vote ignoré</div>
+
+<!-- VOTE IN PROGRESS -->
+<div class="card" id="vote-card">
+  <div class="vote-top">
+    <span class="vote-emoji">🗳️</span>
+    <span class="vote-label">Vote: <strong id="vote-cmd-txt"></strong> — <span id="vote-n">0</span>/2</span>
+    <span id="vote-timer">30</span>
+  </div>
+  <div class="vote-bottom">
+    <div class="vote-pips">
+      <div class="pip" id="pip1"></div>
+      <div class="pip" id="pip2"></div>
+    </div>
+  </div>
+  <div class="vote-bar-bg"><div id="vote-bar-fill" style="width:100%"></div></div>
+</div>
+
+<!-- EVENTS -->
+<div class="card">
+  <div class="section-title">⚡ Événements</div>
+  <div id="events-list">
+    <div class="event-row"><span class="ev-user"></span><span class="ev-cmd" style="opacity:.3">En attente...</span></div>
+  </div>
+</div>
+
+<!-- CHAT -->
+<div class="card">
+  <div class="section-title">💬 Chat</div>
+  <div id="chat-list">
+    <div class="chat-row"><span class="chat-author"></span><span class="chat-msg" style="opacity:.3">En attente...</span></div>
+  </div>
+</div>
+
+<script>
+const INACTIVITY_MAX = 15 * 60;
+
+const inactCard  = document.getElementById('inactivity-card');
+const inactIcon  = document.getElementById('inact-icon');
+const inactLabel = document.getElementById('inact-label');
+const inactTime  = document.getElementById('inact-time');
+const inactFill  = document.getElementById('inact-fill');
+const soloBanner = document.getElementById('solo-banner');
+const voteCard   = document.getElementById('vote-card');
+const voteCmdTxt = document.getElementById('vote-cmd-txt');
+const voteN      = document.getElementById('vote-n');
+const voteTimer  = document.getElementById('vote-timer');
+const voteBarFill= document.getElementById('vote-bar-fill');
+const pip1       = document.getElementById('pip1');
+const pip2       = document.getElementById('pip2');
+const eventsList = document.getElementById('events-list');
+const chatList   = document.getElementById('chat-list');
+
+let lastMsgTime  = Date.now();
+let isWaiting    = false;
+let soloTimer    = null;
+const MAX_EVENTS = 4;
+const MAX_CHAT   = 5;
+
+// Vote countdown state
+let voteCountdown = null;   // setInterval id
+let voteRemaining = 0;
+let voteTotalSecs = 30;
+
+function fmt(s) {
+  s = Math.max(0, Math.floor(s));
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
+
+// ── Inactivity bar ──
+function updateInact() {
+  if (isWaiting) return;
+  const idle = (Date.now() - lastMsgTime) / 1000;
+  const remaining = Math.max(0, INACTIVITY_MAX - idle);
+  inactFill.style.width = (remaining / INACTIVITY_MAX * 100) + '%';
+  inactTime.textContent = fmt(remaining);
+  if (remaining <= 120) {
+    inactCard.classList.add('danger');
+    inactCard.classList.remove('waiting');
+  } else {
+    inactCard.classList.remove('danger');
+  }
+}
+setInterval(updateInact, 1000);
+updateInact();
+
+function setWaitingMode(on) {
+  isWaiting = on;
+  if (on) {
+    inactCard.classList.add('waiting');
+    inactCard.classList.remove('danger');
+    inactLabel.textContent = "EN ATTENTE D'UN MESSAGE";
+    inactIcon.textContent  = '⏳';
+    inactTime.textContent  = '--:--';
+  } else {
+    inactCard.classList.remove('waiting');
+    inactLabel.textContent = 'AUTO-REVERT DANS';
+    inactIcon.textContent  = '💤';
+    lastMsgTime = Date.now();
+    updateInact();
+  }
+}
+
+// ── Vote display ──
+function startVoteCountdown(cmd, count, totalSecs) {
+  // Clear any existing
+  if (voteCountdown) clearInterval(voteCountdown);
+
+  voteTotalSecs = totalSecs;
+  voteRemaining = totalSecs;
+  voteCmdTxt.textContent = cmd;
+  voteN.textContent = count;
+  pip1.className = 'pip' + (count >= 1 ? ' on' : '');
+  pip2.className = 'pip' + (count >= 2 ? ' on' : '');
+  voteTimer.textContent = voteRemaining + 's';
+  voteTimer.classList.remove('urgent');
+  voteBarFill.style.width = '100%';
+  voteCard.classList.add('show');
+
+  voteCountdown = setInterval(() => {
+    voteRemaining--;
+    voteTimer.textContent = voteRemaining + 's';
+    voteBarFill.style.width = (voteRemaining / voteTotalSecs * 100) + '%';
+    if (voteRemaining <= 10) voteTimer.classList.add('urgent');
+    if (voteRemaining <= 0) clearInterval(voteCountdown);
+  }, 1000);
+}
+
+function updateVote(cmd, count, totalSecs) {
+  // Update pips and count without resetting timer
+  voteN.textContent = count;
+  pip1.className = 'pip' + (count >= 1 ? ' on' : '');
+  pip2.className = 'pip' + (count >= 2 ? ' on' : '');
+}
+
+function hideVote() {
+  if (voteCountdown) clearInterval(voteCountdown);
+  voteCountdown = null;
+  voteCard.classList.remove('show');
+  pip1.className = 'pip';
+  pip2.className = 'pip';
+}
+
+// ── Add event ──
+function addEvent(user, cmdText, userClass, cmdClass) {
+  // Vider le placeholder avant d'insérer
+  eventsList.querySelectorAll('.event-row').forEach(r => {
+    if (r.querySelector('.ev-cmd[style]')) r.remove();
+  });
+  const row = document.createElement('div');
+  row.className = 'event-row';
+  row.innerHTML = `<span class="ev-user ${userClass||''}">${user}</span><span class="ev-cmd ${cmdClass||''}">${cmdText}</span>`;
+  eventsList.insertBefore(row, eventsList.firstChild);
+  while (eventsList.children.length > MAX_EVENTS) eventsList.removeChild(eventsList.lastChild);
+}
+
+// ── Add chat ──
+function addChat(user, msg) {
+  // Vider le placeholder avant d'insérer
+  chatList.querySelectorAll('.chat-row').forEach(r => {
+    if (r.querySelector('.chat-msg[style]')) r.remove();
+  });
+  const row = document.createElement('div');
+  row.className = 'chat-row';
+  row.innerHTML = `<span class="chat-author">${user}</span><span class="chat-msg">${msg}</span>`;
+  chatList.insertBefore(row, chatList.firstChild);
+  while (chatList.children.length > MAX_CHAT) chatList.removeChild(chatList.lastChild);
+}
+
+// ── WebSocket ──
+function connect() {
+  const ws = new WebSocket('ws://localhost:8766');
+  ws.onopen = () => console.log('[WS] Connected');
+
+  ws.onmessage = (evt) => {
+    let d;
+    try { d = JSON.parse(evt.data); } catch(e) { console.error('[WS] parse error', e, evt.data); return; }
+    const user = d.user || '';
+    const cmd  = d.command || '';
+    console.log('[WS] received:', user, cmd);
+
+    // ── INIT (synchronisation timer au chargement) ──
+    if (cmd.startsWith('INIT:')) {
+      // INIT:idle=42:waiting=0
+      const params = {};
+      cmd.split(':').slice(1).forEach(p => { const [k,v] = p.split('='); params[k]=v; });
+      const idleElapsed = parseInt(params.idle) || 0;
+      lastMsgTime = Date.now() - idleElapsed * 1000;
+      if (params.waiting === '1') setWaitingMode(true);
+      else { isWaiting = false; updateInact(); }
+      return;
+    }
+
+    // ── STATUS ──
+    if (cmd.startsWith('STATUS:')) {
+      const s = cmd.split(':')[1];
+      if (s === 'waiting') setWaitingMode(true);
+      else if (s === 'active') setWaitingMode(false);
+      return;
+    }
+
+    // Reset inactivity on any real message
+    lastMsgTime = Date.now();
+    if (isWaiting && !cmd.includes('(inactivity)')) setWaitingMode(false);
+
+    // ── VOTE progress: "VOTE:!revert:1:30" ──
+    if (cmd.startsWith('VOTE:')) {
+      const parts  = cmd.split(':');
+      const vcmd   = parts[1];
+      const vcount = parseInt(parts[2]) || 0;
+      const vsecs  = parseInt(parts[3]) || 30;
+
+      if (vcount === 1) {
+        // Premier vote → démarre le countdown
+        startVoteCountdown(vcmd, vcount, vsecs);
+        addEvent(user, `vote ${vcmd} (1/2)`, '', 'vote-ev');
+      } else {
+        // 2ème vote → met à jour les pips (exécution suit)
+        updateVote(vcmd, vcount, vsecs);
+        addEvent(user, `vote ${vcmd} (2/2) ✓`, '', 'vote-ev');
+      }
+      return;
+    }
+
+    // ── Vote expiré ──
+    if (cmd.startsWith('VOTE_EXPIRED:')) {
+      const vcmd = cmd.split(':')[1];
+      hideVote();
+      addEvent('BOT', `vote ${vcmd} expiré`, 'bot-u', 'expired');
+      return;
+    }
+
+    // ── Inactivity auto-revert ──
+    if (cmd.includes('(inactivity)')) {
+      hideVote();
+      addEvent('BOT', '⏰ Auto-revert (inactivité)', 'bot-u', 'system');
+      setWaitingMode(true);
+      return;
+    }
+
+    // ── Chat normal ──
+    if (cmd.startsWith('CHAT:')) {
+      addChat(user, cmd.slice(5));
+      return;
+    }
+
+    // ── Commande inconnue ──
+    if (cmd.startsWith('UNKNOWN:')) {
+      const uc = cmd.slice(8);
+      addEvent(user, `${uc}`, '', 'unknown');
+      return;
+    }
+
+    // ── Solo ──
+    const isSolo = cmd.includes(' (solo)');
+    const realCmd = isSolo ? cmd.replace(' (solo)', '') : cmd;
+
+    if (isSolo) {
+      soloBanner.classList.add('show');
+      clearTimeout(soloBanner._t);
+      soloBanner._t = setTimeout(() => soloBanner.classList.remove('show'), 4000);
+    }
+
+    // ── Commande exécutée → cache le vote ──
+    if (realCmd === '!revert' || realCmd === '!restartvm') {
+      hideVote();
+    }
+
+    // ── Commande connue ──
+    const userCls = isSolo ? 'solo-u' : '';
+    addEvent(user, realCmd, userCls, '');
+  };
+
+  ws.onclose = () => { setTimeout(connect, 3000); };
+  ws.onerror = () => ws.close();
+}
+
+connect();
+</script>
+</body>
+</html>
